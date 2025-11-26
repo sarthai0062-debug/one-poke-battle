@@ -1,0 +1,56 @@
+* {
+  font-family: 'Press Start 2P', cursive;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  background-color: black;
+  overflow: hidden;
+}
+
+h1 {
+  margin: 0;
+}
+
+button {
+  border: 0;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+button:hover {
+  background-color: #ddd;
+}
+
+#root {
+  display: block;
+}
+
+/* Scrollbar styles for marketplace */
+.marketplace-list::-webkit-scrollbar {
+  width: 12px;
+}
+
+.marketplace-list::-webkit-scrollbar-track {
+  background: #ddd;
+  border: 2px solid #000;
+}
+
+.marketplace-list::-webkit-scrollbar-thumb {
+  background: #888;
+  border: 2px solid #000;
+}
+
+.marketplace-list::-webkit-scrollbar-thumb:hover {
+  background: #666;
+}
+
