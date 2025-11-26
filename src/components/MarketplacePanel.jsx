@@ -52,9 +52,9 @@ export const MarketplacePanel = ({
               <span>⭐</span>
               <span>{playerPoints.toLocaleString()} Stardust</span>
             </div>
-            <button onClick={onClose} style={{ fontSize: '12px', padding: '6px 10px' }}>
-              Close (Esc)
-            </button>
+          <button onClick={onClose} style={{ fontSize: '12px', padding: '6px 10px' }}>
+            Close (Esc)
+          </button>
           </div>
         </div>
         

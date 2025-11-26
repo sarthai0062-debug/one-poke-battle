@@ -16,7 +16,8 @@ import { LootToast } from './LootToast'
 import { CharacterDialogue } from './CharacterDialogue'
 import { PointsDisplay } from './PointsDisplay'
 import { supabaseClient } from '../lib/supabaseClient'
-import { ConnectButton, useCurrentAccount } from '@mysten/dapp-kit'
+import { ConnectButton, useCurrentAccount, useSuiClient, useSignAndExecuteTransaction, useWallets } from '@mysten/dapp-kit'
+import { getPoints as getPointsBlockchain, redeemPoints as redeemPointsBlockchain } from '../lib/blockchain'
 
 const CANVAS_WIDTH = 1024
 const CANVAS_HEIGHT = 576
@@ -67,6 +68,12 @@ export const Game = () => {
   const animationIdRef = useRef(null)
   const battleAnimationIdRef = useRef(null)
   const [scale, setScale] = useState(1)
+  
+  // Blockchain hooks
+  const account = useCurrentAccount()
+  const suiClient = useSuiClient()
+  const signAndExecuteTransaction = useSignAndExecuteTransaction()
+  const wallets = useWallets()
   const gameStateRef = useRef({
     boundaries: [],
     battleZones: [],
@@ -452,10 +459,37 @@ export const Game = () => {
     setPoints(newTotal)
     window.localStorage.setItem(POINTS_STORAGE_KEY, String(newTotal))
     await persistPointsToSupabase(newTotal)
+    
+    // No blockchain call when adding points - only when deducting
   }
 
   const deductPoints = async (amount) => {
     if (points < amount) return false
+    
+    // If wallet is connected, call blockchain redeemPoints to deduct points
+    if (account && suiClient && signAndExecuteTransaction) {
+      try {
+        redeemPointsBlockchain({
+          account,
+          suiClient,
+          signAndExecute: signAndExecuteTransaction.mutate,
+          wallet: wallets,
+          amount: amount // This will redeem/deduct the amount on blockchain
+        })
+        console.log('Points redeemed on blockchain successfully')
+      } catch (error) {
+        console.error('Failed to redeem points on blockchain:', error)
+        // Show error to user
+        setLootToast({ 
+          message: 'Blockchain transaction failed. Please try again.', 
+          visible: true 
+        })
+        setTimeout(() => setLootToast({ message: '', visible: false }), 3000)
+        return false // Don't proceed with purchase if blockchain fails
+      }
+    }
+    
+    // Update local state after blockchain transaction
     const newTotal = points - amount
     setPoints(newTotal)
     window.localStorage.setItem(POINTS_STORAGE_KEY, String(newTotal))
@@ -1268,7 +1302,7 @@ export const Game = () => {
           transformOrigin: 'top left'
         }}
       >
-        <ConnectButton />
+      <ConnectButton />
       </div>
 
       <MarketplacePanel
@@ -1287,6 +1321,9 @@ export const Game = () => {
             return
           }
           
+          // Show loading state
+          setLootToast({ message: 'Processing purchase on blockchain...', visible: true })
+          
           const success = await deductPoints(item.price)
           if (success) {
             addCollectibleToInventory({
@@ -1297,6 +1334,9 @@ export const Game = () => {
             await recordMarketplacePurchase(item, item.price)
             setLootToast({ message: `Purchased ${item.name}!`, visible: true })
             setTimeout(() => setLootToast({ message: '', visible: false }), 2000)
+          } else {
+            // Error already shown in deductPoints
+            setTimeout(() => setLootToast({ message: '', visible: false }), 3000)
           }
         }}
       />
