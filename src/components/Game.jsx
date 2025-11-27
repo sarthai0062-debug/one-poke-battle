@@ -42,10 +42,15 @@ const PLAYER_JUMP_CONFIG = {
 }
 const INVENTORY_STORAGE_KEY = 'pokemon-style-inventory'
 const POINTS_STORAGE_KEY = 'pokemon-style-points'
-const PLAYER_ID = 'demo-player' // In production, use actual user ID from auth
 const PLAYER_PROGRESS_TABLE = 'player_progress'
 const PLAYER_POINT_NODES_TABLE = 'player_point_nodes'
 const PLAYER_TRADES_TABLE = 'player_trades'
+
+// Helper function to get player ID from wallet address
+const getPlayerId = (account) => {
+  // Use wallet address as player ID, fallback to 'demo-player' if no wallet connected
+  return account?.address || 'demo-player'
+}
 const MARKETPLACE_TABLE_NAME = 'nft_marketplace'
 const POINTS_PER_BATTLE_VICTORY = 50
 const POINTS_PER_COLLECTIBLE = 25
@@ -133,7 +138,7 @@ export const Game = () => {
     note: ''
   })
   const [characterDialogue, setCharacterDialogue] = useState({ text: '', visible: false })
-  const [claimPopup, setClaimPopup] = useState({ visible: false, type: null, amount: 2000 })
+  const [claimPopup, setClaimPopup] = useState({ visible: false, type: null, amount: 100 })
   const [battleUI, setBattleUI] = useState({
     visible: false,
     enemyHealth: 100,
@@ -308,31 +313,85 @@ export const Game = () => {
       })
     })
 
-    // Create 20 glowing points positioned across the canvas
+    // Create glowing points spread across the entire map in walkable areas
     gs.glowingPoints = []
-    const pointsPerRow = 5
-    const pointsPerCol = 4
-    const spacingX = CANVAS_WIDTH / (pointsPerRow + 1)
-    const spacingY = CANVAS_HEIGHT / (pointsPerCol + 1)
+    const mapWidth = 70 // tiles wide
+    const mapHeight = Math.floor(collisions.length / 70) // tiles tall
+    const tileSize = Boundary.width // 48 pixels
+    const totalMapWidth = mapWidth * tileSize
+    const totalMapHeight = mapHeight * tileSize
     
-    for (let i = 0; i < 20; i++) {
-      const row = Math.floor(i / pointsPerRow)
-      const col = i % pointsPerRow
-      const x = spacingX * (col + 1) - 6 // Center the 12x12 point
-      const y = spacingY * (row + 1) - 6 // Center the 12x12 point
+    // Generate positions across the full map
+    const numGlowingPoints = 20
+    let attempts = 0
+    const maxAttempts = numGlowingPoints * 50 // Try up to 50 times per point
+    
+    // Helper function to check if a position is walkable (not on a boundary)
+    const isWalkable = (x, y) => {
+      const testPoint = {
+        position: { x, y },
+        width: 12,
+        height: 12
+      }
       
-      // Add some randomness to make them more interesting
-      const randomOffsetX = (Math.random() - 0.5) * 50
-      const randomOffsetY = (Math.random() - 0.5) * 50
+      // Check collision with boundaries
+      for (const boundary of gs.boundaries) {
+        if (rectangularCollision({ rectangle1: testPoint, rectangle2: boundary })) {
+          return false
+        }
+      }
       
-      gs.glowingPoints.push(new GlowingPoint({
-        id: `glowing-point-${i}`,
-        position: {
-          x: Math.max(10, Math.min(CANVAS_WIDTH - 22, x + randomOffsetX)),
-          y: Math.max(10, Math.min(CANVAS_HEIGHT - 22, y + randomOffsetY))
-        },
-        pointsValue: 2000
-      }))
+      // Check collision with battle zones
+      for (const battleZone of gs.battleZones) {
+        if (rectangularCollision({ rectangle1: testPoint, rectangle2: battleZone })) {
+          return false
+        }
+      }
+      
+      // Make sure it's within map bounds (with some padding)
+      const minX = offset.x + tileSize
+      const maxX = offset.x + totalMapWidth - tileSize
+      const minY = offset.y + tileSize
+      const maxY = offset.y + totalMapHeight - tileSize
+      
+      return x >= minX && x <= maxX && y >= minY && y <= maxY
+    }
+    
+    // Generate glowing points
+    for (let i = 0; i < numGlowingPoints; i++) {
+      let positionFound = false
+      let tries = 0
+      
+      while (!positionFound && tries < maxAttempts / numGlowingPoints) {
+        // Generate random position across the entire map
+        const tileX = Math.floor(Math.random() * mapWidth)
+        const tileY = Math.floor(Math.random() * mapHeight)
+        
+        // Convert to pixel coordinates with offset
+        const baseX = tileX * tileSize + offset.x
+        const baseY = tileY * tileSize + offset.y
+        
+        // Add some randomness within the tile (but keep it centered)
+        const randomOffsetX = (Math.random() - 0.5) * (tileSize * 0.6)
+        const randomOffsetY = (Math.random() - 0.5) * (tileSize * 0.6)
+        
+        const x = baseX + tileSize / 2 + randomOffsetX - 6 // Center the 12x12 point
+        const y = baseY + tileSize / 2 + randomOffsetY - 6
+        
+        // Check if this position is walkable
+        if (isWalkable(x, y)) {
+          gs.glowingPoints.push(new GlowingPoint({
+            id: `glowing-point-${i}`,
+            position: { x, y },
+            pointsValue: 100
+          }))
+          positionFound = true
+        }
+        
+        tries++
+      }
+      
+      attempts += tries
     }
 
     // Create player
@@ -444,32 +503,46 @@ export const Game = () => {
         cancelAnimationFrame(battleAnimationIdRef.current)
       }
     }
-  }, [])
+  }, [account]) // Reload when account changes
+
+  // Reload points when wallet connects/disconnects
+  useEffect(() => {
+    if (account) {
+      hydratePointsFromSupabase()
+    } else {
+      // Reset to 0 when wallet disconnects
+      setPoints(0)
+    }
+  }, [account?.address])
 
   // Points functions
   const hydratePointsFromSupabase = async () => {
+    const playerId = getPlayerId(account)
+    
     if (!supabaseClient) {
       // Fallback to localStorage only
-      const localPoints = parseInt(window.localStorage.getItem(POINTS_STORAGE_KEY) || '0', 10)
+      const storageKey = `${POINTS_STORAGE_KEY}-${playerId}`
+      const localPoints = parseInt(window.localStorage.getItem(storageKey) || '0', 10)
       setPoints(localPoints)
       return
     }
 
     try {
-      // Get points from Supabase
+      // Get points from Supabase using wallet address as player_id
       const { data, error } = await supabaseClient
         .from(PLAYER_PROGRESS_TABLE)
         .select('points')
-        .eq('player_id', PLAYER_ID)
+        .eq('player_id', playerId)
         .maybeSingle()
 
       const remotePoints = data?.points ?? 0
-      const localPoints = parseInt(window.localStorage.getItem(POINTS_STORAGE_KEY) || '0', 10)
+      const storageKey = `${POINTS_STORAGE_KEY}-${playerId}`
+      const localPoints = parseInt(window.localStorage.getItem(storageKey) || '0', 10)
 
       // Take maximum (prevent rollback)
       const total = Math.max(remotePoints, localPoints)
       setPoints(total)
-      window.localStorage.setItem(POINTS_STORAGE_KEY, String(total))
+      window.localStorage.setItem(storageKey, String(total))
 
       // Sync to Supabase if local was higher
       if (localPoints > remotePoints) {
@@ -477,20 +550,27 @@ export const Game = () => {
       }
     } catch (error) {
       console.warn('Unable to load points from Supabase', error)
-      const localPoints = parseInt(window.localStorage.getItem(POINTS_STORAGE_KEY) || '0', 10)
+      const storageKey = `${POINTS_STORAGE_KEY}-${getPlayerId(account)}`
+      const localPoints = parseInt(window.localStorage.getItem(storageKey) || '0', 10)
       setPoints(localPoints)
     }
   }
 
   const persistPointsToSupabase = async (newTotal) => {
     if (!supabaseClient) return
+    
+    const playerId = getPlayerId(account)
+    if (playerId === 'demo-player') {
+      // Don't persist if no wallet connected
+      return
+    }
 
     try {
       await supabaseClient
         .from(PLAYER_PROGRESS_TABLE)
         .upsert(
           {
-            player_id: PLAYER_ID,
+            player_id: playerId,
             points: newTotal
           },
           { onConflict: 'player_id' }
@@ -501,10 +581,12 @@ export const Game = () => {
   }
 
   const addPoints = async (amount) => {
+    const playerId = getPlayerId(account)
     let newTotal = 0
     setPoints((currentPoints) => {
       newTotal = currentPoints + amount
-      window.localStorage.setItem(POINTS_STORAGE_KEY, String(newTotal))
+      const storageKey = `${POINTS_STORAGE_KEY}-${playerId}`
+      window.localStorage.setItem(storageKey, String(newTotal))
       return newTotal
     })
     
@@ -541,21 +623,26 @@ export const Game = () => {
     }
     
     // Update local state after blockchain transaction
+    const playerId = getPlayerId(account)
     const newTotal = points - amount
     setPoints(newTotal)
-    window.localStorage.setItem(POINTS_STORAGE_KEY, String(newTotal))
+    const storageKey = `${POINTS_STORAGE_KEY}-${playerId}`
+    window.localStorage.setItem(storageKey, String(newTotal))
     await persistPointsToSupabase(newTotal)
     return true
   }
 
   const recordPointNodeCollection = async (nodeId) => {
     if (!supabaseClient) return
+    
+    const playerId = getPlayerId(account)
+    if (playerId === 'demo-player') return // Don't record if no wallet connected
 
     try {
       await supabaseClient
         .from(PLAYER_POINT_NODES_TABLE)
         .insert({
-          player_id: PLAYER_ID,
+          player_id: playerId,
           node_id: nodeId
         })
     } catch (error) {
@@ -567,12 +654,15 @@ export const Game = () => {
 
   const recordMarketplacePurchase = async (item, cost) => {
     if (!supabaseClient) return
+    
+    const playerId = getPlayerId(account)
+    if (playerId === 'demo-player') return // Don't record if no wallet connected
 
     try {
       await supabaseClient
         .from(PLAYER_TRADES_TABLE)
         .insert({
-          player_id: PLAYER_ID,
+          player_id: playerId,
           item_id: item.id ?? item.name,
           item_name: item.name ?? 'Unknown Item',
           cost,
@@ -1395,7 +1485,7 @@ export const Game = () => {
         setClaimPopup({
           visible: true,
           type: 'glow',
-          amount: glowingPoint.pointsValue || 2000
+          amount: glowingPoint.pointsValue || 100
         })
         break // Only process one glowing point at a time
       }
@@ -1656,9 +1746,11 @@ export const Game = () => {
                     await recordMarketplacePurchase(item, item.price)
                     
                     // Update local points
+                    const playerId = getPlayerId(account)
                     const newTotal = points - item.price
                     setPoints(newTotal)
-                    window.localStorage.setItem(POINTS_STORAGE_KEY, String(newTotal))
+                    const storageKey = `${POINTS_STORAGE_KEY}-${playerId}`
+                    window.localStorage.setItem(storageKey, String(newTotal))
                     await persistPointsToSupabase(newTotal)
                     
                     setLootToast({ message: `Purchased ${item.name}!`, visible: true })
@@ -1742,7 +1834,7 @@ export const Game = () => {
           }}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
-              setClaimPopup({ visible: false, type: null, amount: 2000 })
+              setClaimPopup({ visible: false, type: null, amount: 100 })
             }
           }}
         >
