@@ -314,12 +314,21 @@ export const Game = () => {
     })
 
     // Create glowing points spread across the entire map in walkable areas
+    // Use a seeded random number generator to ensure deterministic positions
+    // This ensures the same glowing point IDs always appear at the same positions
     gs.glowingPoints = []
     const mapWidth = 70 // tiles wide
     const mapHeight = Math.floor(collisions.length / 70) // tiles tall
     const tileSize = Boundary.width // 48 pixels
     const totalMapWidth = mapWidth * tileSize
     const totalMapHeight = mapHeight * tileSize
+    
+    // Seeded random number generator for deterministic glowing point positions
+    let seed = 12345 // Fixed seed ensures same positions every time
+    const seededRandom = () => {
+      seed = (seed * 9301 + 49297) % 233280
+      return seed / 233280
+    }
     
     // Generate positions across the full map
     const numGlowingPoints = 20
@@ -357,23 +366,23 @@ export const Game = () => {
       return x >= minX && x <= maxX && y >= minY && y <= maxY
     }
     
-    // Generate glowing points
+    // Generate glowing points with deterministic positions
     for (let i = 0; i < numGlowingPoints; i++) {
       let positionFound = false
       let tries = 0
       
       while (!positionFound && tries < maxAttempts / numGlowingPoints) {
-        // Generate random position across the entire map
-        const tileX = Math.floor(Math.random() * mapWidth)
-        const tileY = Math.floor(Math.random() * mapHeight)
+        // Generate deterministic position using seeded random
+        const tileX = Math.floor(seededRandom() * mapWidth)
+        const tileY = Math.floor(seededRandom() * mapHeight)
         
         // Convert to pixel coordinates with offset
         const baseX = tileX * tileSize + offset.x
         const baseY = tileY * tileSize + offset.y
         
-        // Add some randomness within the tile (but keep it centered)
-        const randomOffsetX = (Math.random() - 0.5) * (tileSize * 0.6)
-        const randomOffsetY = (Math.random() - 0.5) * (tileSize * 0.6)
+        // Add some deterministic randomness within the tile (but keep it centered)
+        const randomOffsetX = (seededRandom() - 0.5) * (tileSize * 0.6)
+        const randomOffsetY = (seededRandom() - 0.5) * (tileSize * 0.6)
         
         const x = baseX + tileSize / 2 + randomOffsetX - 6 // Center the 12x12 point
         const y = baseY + tileSize / 2 + randomOffsetY - 6
@@ -491,6 +500,9 @@ export const Game = () => {
 
     // Load points from Supabase and localStorage
     hydratePointsFromSupabase()
+
+    // Load collected glowing points from Supabase (must be after glowing points are created)
+    hydrateCollectedGlowingPoints()
 
     // Start animation loop
     animate()
@@ -649,6 +661,41 @@ export const Game = () => {
       // Ignore duplicate key errors (23505)
       if (error.code === '23505') return
       console.warn('Unable to record point node collection', error)
+    }
+  }
+
+  const hydrateCollectedGlowingPoints = async () => {
+    if (!supabaseClient) return
+    
+    const playerId = getPlayerId(account)
+    if (playerId === 'demo-player') return // Don't load if no wallet connected
+
+    try {
+      // Fetch all collected glowing point IDs for this user
+      const { data, error } = await supabaseClient
+        .from(PLAYER_POINT_NODES_TABLE)
+        .select('node_id')
+        .eq('player_id', playerId)
+
+      if (error) {
+        console.warn('Unable to load collected glowing points from Supabase', error)
+        return
+      }
+
+      // Create a Set of collected node IDs for fast lookup
+      const collectedIds = new Set((data || []).map(row => row.node_id))
+
+      // Mark glowing points as collected if they're in the collected set
+      const gs = gameStateRef.current
+      if (gs.glowingPoints) {
+        gs.glowingPoints.forEach((glowingPoint) => {
+          if (collectedIds.has(glowingPoint.id)) {
+            glowingPoint.collected = true
+          }
+        })
+      }
+    } catch (error) {
+      console.warn('Unable to hydrate collected glowing points', error)
     }
   }
 
@@ -1481,6 +1528,8 @@ export const Game = () => {
         })
       ) {
         glowingPoint.collected = true
+        // Record collection in Supabase (per-user tracking)
+        recordPointNodeCollection(glowingPoint.id)
         showLootToast('Glowing point found! Claim the reward above.')
         setClaimPopup({
           visible: true,
