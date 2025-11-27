@@ -1,4 +1,4 @@
-# Pokemon Style Game - React + Vite
+# One Poke Battle - React + Vite
 
 A Pokemon-style 2D game built with React and Vite, featuring:
 - Exploration mode with player movement (WASD controls)
