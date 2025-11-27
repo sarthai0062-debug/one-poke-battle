@@ -25,6 +25,22 @@ npm run build
 npm run preview
 ```
 
+## 🌐 Deploy to Vercel
+
+This project is configured for easy deployment on Vercel:
+
+1. **Connect your GitHub repository** to Vercel
+2. **Import the project** - Vercel will auto-detect Vite configuration
+3. **Deploy** - No additional configuration needed!
+
+The `vercel.json` file is already configured with:
+- Build command: `npm run build`
+- Output directory: `dist`
+- SPA routing support (all routes redirect to index.html)
+- Optimized caching for static assets
+
+Your app will be live at: `https://your-project-name.vercel.app`
+
 ## 🎮 Controls
 
 - **WASD**: Move player
