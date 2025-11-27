@@ -8,7 +8,7 @@ export const LootToast = ({ message, isVisible }) => {
       id="lootToast"
       style={{
         position: 'absolute',
-        top: '16px',
+        bottom: '24px',
         left: '50%',
         transform: 'translateX(-50%)',
         background: 'rgba(0, 0, 0, 0.75)',

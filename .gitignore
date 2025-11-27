@@ -27,3 +27,6 @@ dist-ssr
 battleScene.js
 classes.js
 index_old.html
+
+# Build artifacts
+pokemongame/build/

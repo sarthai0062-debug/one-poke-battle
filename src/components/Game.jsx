@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import gsap from 'gsap'
-import { Sprite, Monster, Boundary, Character, Collectible } from '../lib/classes'
+import { Sprite, Monster, Boundary, Character, Collectible, GlowingPoint } from '../lib/classes'
 import { audio } from '../lib/audio'
 import { rectangularCollision, checkForCharacterCollision } from '../lib/utils'
 import { collisions } from '../data/collisions'
@@ -16,7 +16,18 @@ import { LootToast } from './LootToast'
 import { CharacterDialogue } from './CharacterDialogue'
 import { PointsDisplay } from './PointsDisplay'
 import { supabaseClient } from '../lib/supabaseClient'
-import { ConnectButton, useCurrentAccount } from '@mysten/dapp-kit'
+import { ConnectButton, useCurrentAccount, useSuiClient, useSignAndExecuteTransaction, useWallets } from '@mysten/dapp-kit'
+import { Transaction } from '@mysten/sui/transactions'
+import { 
+  getPoints as getPointsBlockchain, 
+  redeemPoints as redeemPointsBlockchain,
+  getPointsForGame,
+  redeemPointsForGame,
+  prepareTransactionForEnoki,
+  isEpochExpirationError,
+  isEnokiWallet,
+  getEpochExpirationMessage
+} from '../lib/blockchain'
 
 const CANVAS_WIDTH = 1024
 const CANVAS_HEIGHT = 576
@@ -44,21 +55,24 @@ const MARKETPLACE_SEED_LISTINGS = [
     name: 'Ember Flare Charm',
     description: 'Imbues Fireball attacks with extra plasma, boosting damage for one battle.',
     price: 320,
-    image_url: '/img/fireball.png'
+    gifPath: '/gifs/ember_flare_charm.gif',
+    image_url: '/gifs/ember_flare_charm.gif'
   },
   {
     id: 'seed-aquifer-petal',
     name: 'Aquifer Petal',
     description: 'Restores 35 HP instantly and grants regen when used before a Draggle fight.',
     price: 280,
-    image_url: '/img/embySprite.png'
+    gifPath: '/gifs/aquifer_petal.gif',
+    image_url: '/gifs/aquifer_petal.gif'
   },
   {
     id: 'seed-starlit-core',
     name: 'Starlit Core Relic',
     description: 'Reduces incoming damage by 20% for two turns. Forged by Pellet Town elders.',
     price: 450,
-    image_url: '/img/draggleSprite.png'
+    gifPath: '/gifs/starlit_core_relic.gif',
+    image_url: '/gifs/starlit_core_relic.gif'
   }
 ]
 
@@ -67,14 +81,22 @@ export const Game = () => {
   const animationIdRef = useRef(null)
   const battleAnimationIdRef = useRef(null)
   const [scale, setScale] = useState(1)
+  
+  // Blockchain hooks
+  const account = useCurrentAccount()
+  const suiClient = useSuiClient()
+  const signAndExecuteTransaction = useSignAndExecuteTransaction()
+  const wallets = useWallets()
   const gameStateRef = useRef({
     boundaries: [],
     battleZones: [],
     characters: [],
     collectibles: [],
+    glowingPoints: [],
     player: null,
     background: null,
     foreground: null,
+    battleBackground: null,
     movables: [],
     renderables: [],
     keys: {
@@ -111,6 +133,7 @@ export const Game = () => {
     note: ''
   })
   const [characterDialogue, setCharacterDialogue] = useState({ text: '', visible: false })
+  const [claimPopup, setClaimPopup] = useState({ visible: false, type: null, amount: 2000 })
   const [battleUI, setBattleUI] = useState({
     visible: false,
     enemyHealth: 100,
@@ -119,6 +142,7 @@ export const Game = () => {
     dialogueText: '',
     isDialogueVisible: false
   })
+  const [isInventoryVisible, setIsInventoryVisible] = useState(true)
   const [audioStarted, setAudioStarted] = useState(false)
 
   // Responsive scaling so the game fits the screen
@@ -284,6 +308,33 @@ export const Game = () => {
       })
     })
 
+    // Create 20 glowing points positioned across the canvas
+    gs.glowingPoints = []
+    const pointsPerRow = 5
+    const pointsPerCol = 4
+    const spacingX = CANVAS_WIDTH / (pointsPerRow + 1)
+    const spacingY = CANVAS_HEIGHT / (pointsPerCol + 1)
+    
+    for (let i = 0; i < 20; i++) {
+      const row = Math.floor(i / pointsPerRow)
+      const col = i % pointsPerRow
+      const x = spacingX * (col + 1) - 6 // Center the 12x12 point
+      const y = spacingY * (row + 1) - 6 // Center the 12x12 point
+      
+      // Add some randomness to make them more interesting
+      const randomOffsetX = (Math.random() - 0.5) * 50
+      const randomOffsetY = (Math.random() - 0.5) * 50
+      
+      gs.glowingPoints.push(new GlowingPoint({
+        id: `glowing-point-${i}`,
+        position: {
+          x: Math.max(10, Math.min(CANVAS_WIDTH - 22, x + randomOffsetX)),
+          y: Math.max(10, Math.min(CANVAS_HEIGHT - 22, y + randomOffsetY))
+        },
+        pointsValue: 2000
+      }))
+    }
+
     // Create player
     const playerDownImage = new Image()
     playerDownImage.src = '/img/playerDown.png'
@@ -359,6 +410,7 @@ export const Game = () => {
       gs.background,
       ...gs.boundaries,
       ...gs.collectibles,
+      ...gs.glowingPoints,
       gs.foreground,
       ...gs.battleZones,
       ...gs.characters
@@ -367,6 +419,7 @@ export const Game = () => {
     gs.renderables = [
       gs.background,
       ...gs.collectibles,
+      ...gs.glowingPoints,
       ...gs.boundaries,
       ...gs.battleZones,
       ...gs.characters,
@@ -448,14 +501,46 @@ export const Game = () => {
   }
 
   const addPoints = async (amount) => {
-    const newTotal = points + amount
-    setPoints(newTotal)
-    window.localStorage.setItem(POINTS_STORAGE_KEY, String(newTotal))
+    let newTotal = 0
+    setPoints((currentPoints) => {
+      newTotal = currentPoints + amount
+      window.localStorage.setItem(POINTS_STORAGE_KEY, String(newTotal))
+      return newTotal
+    })
+    
+    // Persist to Supabase after state update
     await persistPointsToSupabase(newTotal)
+    
+    // No blockchain call when adding points - only when deducting
   }
 
   const deductPoints = async (amount) => {
     if (points < amount) return false
+    
+    // If wallet is connected, call blockchain redeemPoints to deduct points
+    if (account && suiClient && signAndExecuteTransaction) {
+      try {
+        redeemPointsBlockchain({
+          account,
+          suiClient,
+          signAndExecute: signAndExecuteTransaction.mutate,
+          wallet: wallets,
+          amount: amount // This will redeem/deduct the amount on blockchain
+        })
+        console.log('Points redeemed on blockchain successfully')
+      } catch (error) {
+        console.error('Failed to redeem points on blockchain:', error)
+        // Show error to user
+        setLootToast({ 
+          message: 'Blockchain transaction failed. Please try again.', 
+          visible: true 
+        })
+        setTimeout(() => setLootToast({ message: '', visible: false }), 3000)
+        return false // Don't proceed with purchase if blockchain fails
+      }
+    }
+    
+    // Update local state after blockchain transaction
     const newTotal = points - amount
     setPoints(newTotal)
     window.localStorage.setItem(POINTS_STORAGE_KEY, String(newTotal))
@@ -498,6 +583,163 @@ export const Game = () => {
     }
   }
 
+  // Get Points function - exact as provided by user (amount configurable)
+  const getPoints = async (amount = 2000) => {
+    if (!account) {
+      console.log("No account connected");
+      return;
+    }
+    
+    const tx = new Transaction();
+    tx.setSender(account.address);
+    const packageId = "0x7f1212e08fcfe293b7299f1e5c0ccc2c6dafd9552d9e9c3bbd407934133748a3"; // Contract Address
+    
+    tx.moveCall({
+      package: packageId,
+      module: "pokemongame",
+      function: "get_points",
+      arguments: [
+        tx.sharedObjectRef({
+          objectId: "0x80137994fcd221d2497df286dec9f7d316b19ea6a709c7f7aeeaafcd8d36fd53",        // nftCount
+          mutable: true,                  // read-only ref (&)
+          initialSharedVersion: 3304, // ONELABS
+        }),
+        tx.pure.u256(amount),
+      ],
+    });
+    
+    // Prepare transaction for Enoki wallets (set OCT gas payment if needed)
+    await prepareTransactionForEnoki(tx, suiClient, account.address, wallets?.currentWallet || null);
+    
+    console.log("Processing Transaction");
+    
+    signAndExecuteTransaction.mutate(
+      {
+        transaction: tx
+      },
+      {
+        onError: (e) => {
+          console.log("Tx Failed! from here");
+          console.log(e);
+          
+          // Check if it's an epoch expiration error for Enoki wallets
+          if (isEpochExpirationError(e) && wallets?.currentWallet && isEnokiWallet(wallets.currentWallet)) {
+            const errorMessage = getEpochExpirationMessage(e);
+            console.error("Enoki Session Expired:", errorMessage);
+            alert(
+              "⚠️ Your zkLogin session has expired!\n\n" +
+              errorMessage + "\n\n" +
+              "Please disconnect and reconnect your wallet to continue."
+            );
+          } else {
+            setLootToast({ 
+              message: 'Transaction failed. Please try again.', 
+              visible: true 
+            })
+            setTimeout(() => setLootToast({ message: '', visible: false }), 3000)
+          }
+        },
+        onSuccess: async ({ digest }) => {
+          let p = await suiClient.waitForTransaction({
+            digest,
+            options: {
+              showEffects: true
+            }
+          });
+          console.log("Transaction Result:", p);
+          console.log("tx digest:", digest);
+          reset();
+          console.log("Tx Succesful!");
+          
+          // Update local points after successful transaction
+          await addPoints(amount)
+          
+          // Close the popup
+          setClaimPopup({ visible: false, type: null, amount: 2000 })
+          
+          const formattedAmount = amount.toLocaleString()
+          setLootToast({ message: `Successfully claimed ${formattedAmount} points!`, visible: true })
+          setTimeout(() => setLootToast({ message: '', visible: false }), 3000)
+        }
+      }
+    );
+  }
+
+  // Simple reset function - can be customized based on your needs
+  const reset = () => {
+    // Reset any form or state if needed
+    // This is called after successful blockchain transactions
+    console.log('Transaction completed, reset called')
+  }
+
+
+  // Redeem Points function - as provided by user
+  const redeemPoints = async () => {
+    if (!account) {
+      console.log("No account connected");
+      return;
+    }
+    
+    const tx = new Transaction();
+    tx.setSender(account.address);
+    const packageId = "0x7f1212e08fcfe293b7299f1e5c0ccc2c6dafd9552d9e9c3bbd407934133748a3"; // Contract Address
+    
+    // public fun reedem_points(userPts:&mut UserPoints, amount:u256, ctx: &mut TxContext) {
+    tx.moveCall({
+      package: packageId,
+      module: "pokemongame",
+      function: "reedem_points",
+      arguments: [
+        tx.sharedObjectRef({
+          objectId: "0x80137994fcd221d2497df286dec9f7d316b19ea6a709c7f7aeeaafcd8d36fd53",        // nftCount
+          mutable: true,                  // read-only ref (&)
+          initialSharedVersion: 3304, // ONELABS
+        }),
+        tx.pure.u256(450),
+      ],
+    });
+    
+    // Prepare transaction for Enoki wallets (set OCT gas payment if needed)
+    await prepareTransactionForEnoki(tx, suiClient, account.address, wallets?.currentWallet || null);
+    
+    console.log("Processing Transaction");
+    
+    signAndExecuteTransaction.mutate(
+      {
+        transaction: tx
+      },
+      {
+        onError: (e) => {
+          console.log("Tx Failed! from here");
+          console.log(e);
+          
+          // Check if it's an epoch expiration error for Enoki wallets
+          if (isEpochExpirationError(e) && wallets?.currentWallet && isEnokiWallet(wallets.currentWallet)) {
+            const errorMessage = getEpochExpirationMessage(e);
+            console.error("Enoki Session Expired:", errorMessage);
+            alert(
+              "⚠️ Your zkLogin session has expired!\n\n" +
+              errorMessage + "\n\n" +
+              "Please disconnect and reconnect your wallet to continue."
+            );
+          }
+        },
+        onSuccess: async ({ digest }) => {
+          let p = await suiClient.waitForTransaction({
+            digest,
+            options: {
+              showEffects: true
+            }
+          });
+          console.log("Transaction Result:", p);
+          console.log("tx digest:", digest);
+          reset();
+          console.log("Tx Succesful!");
+        }
+      }
+    );
+  }
+
   // Inventory functions
   const hydrateInventory = () => {
     let savedIds = []
@@ -518,7 +760,8 @@ export const Game = () => {
         newItems.push({
           id: collectible.id,
           name: collectible.name,
-          description: collectible.description
+          description: collectible.description,
+          gifPath: collectible.gifPath
         })
       }
     })
@@ -562,12 +805,18 @@ export const Game = () => {
   const addCollectibleToInventory = (collectible) => {
     setInventoryItems((prev) => {
       if (prev.find((item) => item.id === collectible.id)) return prev
+      
+      // Look up GIF path from collectiblesData
+      const collectibleData = collectiblesData.find(c => c.id === collectible.id)
+      const gifPath = collectibleData?.gifPath || collectible.gifPath
+      
       const newItems = [
         ...prev,
         {
           id: collectible.id,
           name: collectible.name,
-          description: collectible.description
+          description: collectible.description,
+          gifPath: gifPath
         }
       ]
       recomputeCollectibleBonuses(newItems)
@@ -719,6 +968,17 @@ export const Game = () => {
   const initBattle = () => {
     const gs = gameStateRef.current
     
+    // Prepare battle background sprite once per battle
+    const battleBackgroundImage = new Image()
+    battleBackgroundImage.src = '/img/battleBackground.png'
+    gs.battleBackground = new Sprite({
+      position: { x: 0, y: 0 },
+      image: battleBackgroundImage
+    })
+
+    // Hide inventory during battle so HUD doesn't cover enemies
+    setIsInventoryVisible(false)
+
     setBattleUI({
       visible: true,
       enemyHealth: 100,
@@ -753,13 +1013,16 @@ export const Game = () => {
             setBattleUI((prev) => ({ ...prev, dialogueText: faintMessage, isDialogueVisible: true }))
           })
           gs.queue.push(() => {
-            // Award points for battle victory
-            addPoints(POINTS_PER_BATTLE_VICTORY)
             setBattleUI((prev) => ({
               ...prev,
-              dialogueText: `Victory! Earned ${POINTS_PER_BATTLE_VICTORY} Stardust!`,
+              dialogueText: `Victory! Claim ${POINTS_PER_BATTLE_VICTORY} Stardust!`,
               isDialogueVisible: true
             }))
+            setClaimPopup({
+              visible: true,
+              type: 'battle',
+              amount: POINTS_PER_BATTLE_VICTORY
+            })
           })
           gs.queue.push(() => {
             gsap.to('#overlappingDiv', {
@@ -771,6 +1034,7 @@ export const Game = () => {
                 gsap.to('#overlappingDiv', { opacity: 0 })
                 gs.battle.initiated = false
                 audio.Map.play()
+                setIsInventoryVisible(true)
               }
             })
           })
@@ -801,6 +1065,7 @@ export const Game = () => {
                       gsap.to('#overlappingDiv', { opacity: 0 })
                       gs.battle.initiated = false
                       audio.Map.play()
+                      setIsInventoryVisible(true)
                     }
                   })
                 })
@@ -841,14 +1106,16 @@ export const Game = () => {
 
     battleAnimationIdRef.current = window.requestAnimationFrame(animateBattle)
 
-    const battleBackgroundImage = new Image()
-    battleBackgroundImage.src = '/img/battleBackground.png'
-    const battleBackground = new Sprite({
-      position: { x: 0, y: 0 },
-      image: battleBackgroundImage
-    })
+    if (!gs.battleBackground) {
+      const battleBackgroundImage = new Image()
+      battleBackgroundImage.src = '/img/battleBackground.png'
+      gs.battleBackground = new Sprite({
+        position: { x: 0, y: 0 },
+        image: battleBackgroundImage
+      })
+    }
 
-    battleBackground.draw(c)
+    gs.battleBackground.draw(c)
 
     gs.renderedSprites.forEach((sprite) => {
       sprite.draw(c)
@@ -1096,7 +1363,7 @@ export const Game = () => {
     jump.velocity = PLAYER_JUMP_CONFIG.power
   }
 
-  const handleCollectiblePickups = () => {
+  const handleCollectiblePickups = async () => {
     const gs = gameStateRef.current
     if (gs.battle.initiated) return
 
@@ -1113,6 +1380,26 @@ export const Game = () => {
         showLootToast(`Collected ${collectible.name}!`)
       }
     })
+
+    // Handle glowing points collection
+    for (const glowingPoint of gs.glowingPoints) {
+      if (glowingPoint.collected) continue
+      if (
+        rectangularCollision({
+          rectangle1: gs.player,
+          rectangle2: glowingPoint
+        })
+      ) {
+        glowingPoint.collected = true
+        showLootToast('Glowing point found! Claim the reward above.')
+        setClaimPopup({
+          visible: true,
+          type: 'glow',
+          amount: glowingPoint.pointsValue || 2000
+        })
+        break // Only process one glowing point at a time
+      }
+    }
   }
 
   // Keyboard handlers
@@ -1268,7 +1555,7 @@ export const Game = () => {
           transformOrigin: 'top left'
         }}
       >
-        <ConnectButton />
+      <ConnectButton />
       </div>
 
       <MarketplacePanel
@@ -1287,27 +1574,141 @@ export const Game = () => {
             return
           }
           
-          const success = await deductPoints(item.price)
-          if (success) {
-            addCollectibleToInventory({
-              id: item.id,
-              name: item.name,
-              description: item.description
-            })
-            await recordMarketplacePurchase(item, item.price)
-            setLootToast({ message: `Purchased ${item.name}!`, visible: true })
-            setTimeout(() => setLootToast({ message: '', visible: false }), 2000)
+          // Show loading state
+          setLootToast({ message: 'Processing purchase on blockchain...', visible: true })
+          
+          // Call redeemPoints function for purchase
+          if (account && suiClient && signAndExecuteTransaction) {
+            if (!account) {
+              console.log("No account connected");
+              setLootToast({ message: 'Please connect your wallet first!', visible: true })
+              setTimeout(() => setLootToast({ message: '', visible: false }), 3000)
+              return
+            }
+            
+            const tx = new Transaction();
+            tx.setSender(account.address);
+            const packageId = "0x7f1212e08fcfe293b7299f1e5c0ccc2c6dafd9552d9e9c3bbd407934133748a3"; // Contract Address
+            
+            // public fun reedem_points(userPts:&mut UserPoints, amount:u256, ctx: &mut TxContext) {
+            tx.moveCall({
+              package: packageId,
+              module: "pokemongame",
+              function: "reedem_points",
+              arguments: [
+                tx.sharedObjectRef({
+                  objectId: "0x80137994fcd221d2497df286dec9f7d316b19ea6a709c7f7aeeaafcd8d36fd53",        // nftCount
+                  mutable: true,                  // read-only ref (&)
+                  initialSharedVersion: 3304, // ONELABS
+                }),
+                tx.pure.u256(item.price),
+              ],
+            });
+            
+            // Prepare transaction for Enoki wallets (set OCT gas payment if needed)
+            await prepareTransactionForEnoki(tx, suiClient, account.address, wallets?.currentWallet || null);
+            
+            console.log("Processing Transaction");
+            
+            signAndExecuteTransaction.mutate(
+              {
+                transaction: tx
+              },
+              {
+                onError: (e) => {
+                  console.log("Tx Failed! from here");
+                  console.log(e);
+                  
+                  // Check if it's an epoch expiration error for Enoki wallets
+                  if (isEpochExpirationError(e) && wallets?.currentWallet && isEnokiWallet(wallets.currentWallet)) {
+                    const errorMessage = getEpochExpirationMessage(e);
+                    console.error("Enoki Session Expired:", errorMessage);
+                    setLootToast({ 
+                      message: '⚠️ Your zkLogin session has expired! Please disconnect and reconnect your wallet.', 
+                      visible: true 
+                    })
+                    setTimeout(() => setLootToast({ message: '', visible: false }), 5000)
+                  } else {
+                    setLootToast({ message: 'Transaction failed. Please try again.', visible: true })
+                    setTimeout(() => setLootToast({ message: '', visible: false }), 3000)
+                  }
+                },
+                onSuccess: async ({ digest }) => {
+                  try {
+                    let p = await suiClient.waitForTransaction({
+                      digest,
+                      options: {
+                        showEffects: true
+                      }
+                    });
+                    console.log("Transaction Result:", p);
+                    console.log("tx digest:", digest);
+                    reset();
+                    console.log("Tx Succesful!");
+                    
+                    // Add item to inventory and record purchase
+                    addCollectibleToInventory({
+                      id: item.id,
+                      name: item.name,
+                      description: item.description,
+                      gifPath: item.gifPath || item.image_url
+                    })
+                    await recordMarketplacePurchase(item, item.price)
+                    
+                    // Update local points
+                    const newTotal = points - item.price
+                    setPoints(newTotal)
+                    window.localStorage.setItem(POINTS_STORAGE_KEY, String(newTotal))
+                    await persistPointsToSupabase(newTotal)
+                    
+                    setLootToast({ message: `Purchased ${item.name}!`, visible: true })
+                    setTimeout(() => setLootToast({ message: '', visible: false }), 2000)
+                  } catch (error) {
+                    console.error('Error waiting for transaction:', error)
+                    setLootToast({ message: 'Transaction completed but failed to verify.', visible: true })
+                    setTimeout(() => setLootToast({ message: '', visible: false }), 3000)
+                  }
+                }
+              }
+            );
+          } else {
+            // Fallback if wallet not connected
+            const success = await deductPoints(item.price)
+            if (success) {
+              addCollectibleToInventory({
+                id: item.id,
+                name: item.name,
+                description: item.description,
+                gifPath: item.gifPath || item.image_url
+              })
+              await recordMarketplacePurchase(item, item.price)
+              setLootToast({ message: `Purchased ${item.name}!`, visible: true })
+              setTimeout(() => setLootToast({ message: '', visible: false }), 2000)
+            } else {
+              setTimeout(() => setLootToast({ message: '', visible: false }), 3000)
+            }
           }
         }}
       />
 
-      <PointsDisplay points={points} />
+      <PointsDisplay
+        points={points}
+        inventoryVisible={isInventoryVisible}
+        onToggleInventory={() => setIsInventoryVisible((prev) => !prev)}
+        canToggleInventory={!battleUI.visible}
+      />
 
       <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT}></canvas>
 
       <LootToast message={lootToast.message} isVisible={lootToast.visible} />
 
-      <InventoryPanel items={inventoryItems} bonuses={inventoryBonuses} />
+      {isInventoryVisible && (
+        <InventoryPanel
+          items={inventoryItems}
+          bonuses={inventoryBonuses}
+          onToggle={() => setIsInventoryVisible(false)}
+        />
+      )}
 
       <CharacterDialogue text={characterDialogue.text} isVisible={characterDialogue.visible} />
 
@@ -1323,6 +1724,89 @@ export const Game = () => {
         onAttackHover={(attack) => setBattleUI((prev) => ({ ...prev, selectedAttackType: attack }))}
         onDialogueClick={handleDialogueClick}
       />
+
+      {/* Claim Points Popup */}
+      {claimPopup.visible && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 1000
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setClaimPopup({ visible: false, type: null, amount: 2000 })
+            }
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: 'white',
+              padding: '32px',
+              borderRadius: '12px',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
+              maxWidth: '400px',
+              width: '90%',
+              textAlign: 'center'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ marginTop: 0, marginBottom: '16px', color: '#333' }}>
+              {claimPopup.type === 'battle' ? '🏆 Victory Reward' : '⭐ Glowing Point'}
+            </h2>
+            <p style={{ marginBottom: '24px', color: '#666', fontSize: '16px' }}>
+              Claim <strong>{claimPopup.amount.toLocaleString()} points</strong> on-chain
+              {claimPopup.type === 'battle' ? ' for winning the battle!' : ' from your discovery!'}
+            </p>
+            {!account && (
+              <p style={{ marginBottom: '16px', color: '#ff6b6b', fontSize: '14px' }}>
+                Please connect your wallet first
+              </p>
+            )}
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+              <button
+                onClick={() => setClaimPopup({ visible: false, type: null, amount: 2000 })}
+                style={{
+                  padding: '12px 24px',
+                  backgroundColor: '#ccc',
+                  color: '#333',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  fontWeight: 'bold'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => getPoints(claimPopup.amount)}
+                disabled={!account}
+                style={{
+                  padding: '12px 24px',
+                  backgroundColor: account ? '#4CAF50' : '#ccc',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: account ? 'pointer' : 'not-allowed',
+                  fontSize: '16px',
+                  fontWeight: 'bold',
+                  opacity: account ? 1 : 0.6
+                }}
+              >
+                Claim Points
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   )
