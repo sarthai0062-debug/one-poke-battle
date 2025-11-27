@@ -6,6 +6,14 @@ export default defineConfig({
   publicDir: 'public',
   server: {
     port: 3000
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: undefined
+      }
+    },
+    chunkSizeWarningLimit: 1000
   }
 })
 
