@@ -1,13 +1,31 @@
-# One Poke Battle - React + Vite
+# 🎮 One Poke Battle
 
-A Pokemon-style 2D game built with React and Vite, featuring blockchain integration with Sui Network and NFT marketplace functionality.
-- Exploration mode with player movement (WASD controls)
-- Battle system with turn-based combat
-- Collectible items with inventory system
-- Character dialogue and interactions
-- NFT Marketplace integration with Supabase
-- Audio system with background music and sound effects
-- Smooth animations using GSAP
+<div align="center">
+
+![One Poke Battle](https://img.shields.io/badge/One%20Poke%20Battle-Live-brightgreen)
+![React](https://img.shields.io/badge/React-18.2-blue)
+![Vite](https://img.shields.io/badge/Vite-5.0-purple)
+![Sui Network](https://img.shields.io/badge/Sui%20Network-Integrated-orange)
+
+**A Pokemon-style 2D game with blockchain integration, NFT marketplace, and on-chain rewards!**
+
+[🌐 Live Demo](https://one-poke-battle.vercel.app/) • [📖 Documentation](#-features) • [🚀 Deploy](#-deploy-to-vercel)
+
+</div>
+
+---
+
+## ✨ What is One Poke Battle?
+
+One Poke Battle is a fully-featured Pokemon-style 2D game built with modern web technologies. Explore Pellet Town, battle monsters, collect items, and earn blockchain rewards! The game features:
+
+- 🎯 **Exploration Mode** - Navigate through Pellet Town with WASD controls
+- ⚔️ **Turn-Based Battles** - Fight monsters in strategic combat
+- 🎒 **Inventory System** - Collect items with special battle bonuses
+- 💎 **NFT Marketplace** - Buy and sell items powered by Supabase
+- ⛓️ **Blockchain Integration** - Earn and redeem points on Sui Network
+- 🎨 **Animated GIFs** - Beautiful animated inventory items
+- 🎵 **Audio System** - Immersive sound effects and background music
 
 ## 🚀 Quick Start
 
@@ -25,22 +43,26 @@ npm run build
 npm run preview
 ```
 
-## 🌐 Deploy to Vercel
+## 🌐 Live Deployment
 
-This project is configured for easy deployment on Vercel:
+**🎮 Play the game now:** [https://one-poke-battle.vercel.app/](https://one-poke-battle.vercel.app/)
+
+The game is fully deployed and ready to play! Connect your wallet, explore Pellet Town, and start collecting rewards.
+
+### Deploy to Vercel
+
+This project is pre-configured for easy deployment on Vercel:
 
 1. **Connect your GitHub repository** to Vercel
 2. **Import the project** - Vercel will auto-detect Vite configuration
 3. **Deploy** - No additional configuration needed!
 
 The `vercel.json` file is already configured with:
-- Build command: `npm ci && npm run build`
+- Build command: `npm run build`
 - Output directory: `dist`
 - SPA routing support (all routes redirect to index.html)
 - Optimized caching for static assets (GIFs, images, audio)
 - Node.js 18 specified via `.nvmrc`
-
-Your app will be live at: `https://your-project-name.vercel.app`
 
 ### Build Requirements
 - Node.js 18+ (specified in `.nvmrc`)
@@ -114,15 +136,33 @@ Your app will be live at: `https://your-project-name.vercel.app`
 - Browse NFT listings from Supabase
 - Fallback to local seed data if database is empty
 - Vendor NPC interaction to access marketplace
+- Animated GIF support for inventory and marketplace items
 
-## 🔧 Technologies Used
+### Blockchain Integration
+- **Sui Network Integration** - Full blockchain support via @mysten/dapp-kit
+- **Wallet Connection** - Connect with Sui-compatible wallets
+- **Earn Points** - Collect glowing points and win battles to earn Stardust
+- **Redeem Points** - Spend Stardust in the marketplace for powerful items
+- **On-Chain Transactions** - All point operations are recorded on-chain
+- **Real-Time Updates** - Balance updates instantly after transactions
 
-- **React 18** - UI framework
-- **Vite** - Build tool and dev server
-- **GSAP** - Animation library
-- **Howler.js** - Audio management
-- **Supabase** - Backend database
-- **HTML5 Canvas** - Game rendering
+## 🔧 Tech Stack
+
+### Frontend
+- **React 18** - Modern UI framework
+- **Vite** - Lightning-fast build tool and dev server
+- **GSAP** - Professional animation library
+- **HTML5 Canvas** - High-performance game rendering
+
+### Backend & Services
+- **Supabase** - PostgreSQL database for marketplace and player data
+- **Sui Network** - Blockchain for on-chain points and transactions
+- **@mysten/dapp-kit** - Sui wallet integration and transaction handling
+
+### Audio & Assets
+- **Howler.js** - Advanced audio management
+- **Animated GIFs** - Beautiful item animations
+- **Pixel Art Sprites** - Retro-style game graphics
 
 ## 🎨 Game Assets
 
@@ -145,12 +185,33 @@ The game connects to Supabase for the NFT marketplace feature. The configuration
    - `image_url` (text)
 3. Update the Supabase URL and anon key in `src/lib/supabaseClient.js`
 
-## 📝 Notes
+## 🎯 Gameplay Features
 
-- The game automatically saves inventory progress to localStorage
+### Collectibles & Rewards
+- **Glowing Points** - Collect 20 glowing points scattered across the map
+- **Battle Rewards** - Win battles to earn 50 Stardust points
+- **Collectible Items** - Find special items that grant battle bonuses
+- **Claim System** - Claim your rewards on-chain via wallet transactions
+
+### Battle System
+- **Random Encounters** - 1% chance when walking on grass tiles
+- **Turn-Based Combat** - Strategic battles with multiple attack types
+- **Item Bonuses** - Collected items provide combat advantages
+- **Victory Rewards** - Earn points and items for winning battles
+
+### Inventory & Marketplace
+- **Animated Items** - Beautiful GIF animations for all collectibles
+- **Item Effects** - Each item provides unique battle bonuses
+- **Marketplace** - Purchase powerful items with earned Stardust
+- **Persistent Storage** - Progress saved to localStorage and Supabase
+
+## 📝 Technical Notes
+
+- The game automatically saves inventory progress to localStorage and Supabase
 - Battle encounters occur randomly when walking in grass areas (1% chance)
-- All game logic runs on a canvas animation loop
+- All game logic runs on a canvas animation loop for smooth 60fps gameplay
 - The UI is built with React components overlaying the canvas
+- Blockchain transactions are handled asynchronously with proper error handling
 
 ## 🐛 Troubleshooting
 
@@ -160,7 +221,31 @@ If you encounter issues:
 3. Check browser console for errors
 4. Verify Node.js version is 18 or higher
 
+## 🔗 Links
+
+- **🌐 Live Game:** [https://one-poke-battle.vercel.app/](https://one-poke-battle.vercel.app/)
+- **📦 GitHub Repository:** [https://github.com/sarthai0062-debug/one-poke-battle](https://github.com/sarthai0062-debug/one-poke-battle)
+- **📊 Vercel Dashboard:** [View Deployments](https://vercel.com/sarss-projects/one-poke-battle)
+
+## 🤝 Contributing
+
+Contributions are welcome! Feel free to:
+- 🐛 Report bugs
+- 💡 Suggest new features
+- 🔧 Submit pull requests
+- 📖 Improve documentation
+
 ## 📄 License
 
 This is a demonstration project. Feel free to use and modify as needed.
+
+---
+
+<div align="center">
+
+**Made with ❤️ using React, Vite, and Sui Network**
+
+⭐ Star this repo if you like it!
+
+</div>
 
