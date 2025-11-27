@@ -1,6 +1,6 @@
 # One Poke Battle - React + Vite
 
-A Pokemon-style 2D game built with React and Vite, featuring:
+A Pokemon-style 2D game built with React and Vite, featuring blockchain integration with Sui Network and NFT marketplace functionality.
 - Exploration mode with player movement (WASD controls)
 - Battle system with turn-based combat
 - Collectible items with inventory system
@@ -34,12 +34,17 @@ This project is configured for easy deployment on Vercel:
 3. **Deploy** - No additional configuration needed!
 
 The `vercel.json` file is already configured with:
-- Build command: `npm run build`
+- Build command: `npm ci && npm run build`
 - Output directory: `dist`
 - SPA routing support (all routes redirect to index.html)
-- Optimized caching for static assets
+- Optimized caching for static assets (GIFs, images, audio)
+- Node.js 18 specified via `.nvmrc`
 
 Your app will be live at: `https://your-project-name.vercel.app`
+
+### Build Requirements
+- Node.js 18+ (specified in `.nvmrc`)
+- npm 9+ (specified in `package.json` engines)
 
 ## 🎮 Controls
 
