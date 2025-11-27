@@ -1,21 +1,21 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import gsap from 'gsap'
-import { Sprite, Monster, Boundary, Character, Collectible, GlowingPoint } from '../lib/classes'
-import { audio } from '../lib/audio'
-import { rectangularCollision, checkForCharacterCollision } from '../lib/utils'
-import { collisions } from '../data/collisions'
-import { battleZonesData } from '../data/battleZones'
-import { charactersMapData } from '../data/characters'
-import { collectiblesData, collectibleEffects } from '../data/collectibles'
-import { attacks } from '../data/attacks'
-import { monsters } from '../data/monsters'
+import { Sprite, Monster, Boundary, Character, Collectible, GlowingPoint } from '../lib/classes.js'
+import { audio } from '../lib/audio.js'
+import { rectangularCollision, checkForCharacterCollision } from '../lib/utils.js'
+import { collisions } from '../data/collisions.js'
+import { battleZonesData } from '../data/battleZones.js'
+import { charactersMapData } from '../data/characters.js'
+import { collectiblesData, collectibleEffects } from '../data/collectibles.js'
+import { attacks } from '../data/attacks.js'
+import { monsters } from '../data/monsters.js'
 import { BattleUI } from './BattleUI'
 import { InventoryPanel } from './InventoryPanel'
 import { MarketplacePanel } from './MarketplacePanel'
 import { LootToast } from './LootToast'
 import { CharacterDialogue } from './CharacterDialogue'
 import { PointsDisplay } from './PointsDisplay'
-import { supabaseClient } from '../lib/supabaseClient'
+import { supabaseClient } from '../lib/supabaseClient.js'
 import { ConnectButton, useCurrentAccount, useSuiClient, useSignAndExecuteTransaction, useWallets } from '@mysten/dapp-kit'
 import { Transaction } from '@mysten/sui/transactions'
 import { 
@@ -27,7 +27,7 @@ import {
   isEpochExpirationError,
   isEnokiWallet,
   getEpochExpirationMessage
-} from '../lib/blockchain'
+} from '../lib/blockchain.js'
 
 const CANVAS_WIDTH = 1024
 const CANVAS_HEIGHT = 576
