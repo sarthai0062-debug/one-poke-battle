@@ -324,4 +324,278 @@ export const getUserPoints = async ({ suiClient, address }) => {
   }
 }
 
+/**
+ * Game-friendly wrapper for getPoints that returns a Promise
+ * Use this function in your game components for easier async/await handling
+ * 
+ * @param {Object} params - Transaction parameters
+ * @param {Object} params.account - Current account from useCurrentAccount()
+ * @param {Object} params.suiClient - Sui client from useSuiClient()
+ * @param {Function} params.signAndExecute - Sign and execute function from useSignAndExecuteTransaction()
+ * @param {Object} params.wallet - Wallet object from useWallets()
+ * @param {number} amount - Amount of points to get (default: 2000)
+ * @returns {Promise<{success: boolean, digest?: string, error?: string}>}
+ * 
+ * @example
+ * ```jsx
+ * const handleGetPoints = async () => {
+ *   try {
+ *     const result = await getPointsForGame({
+ *       account,
+ *       suiClient,
+ *       signAndExecute: signAndExecuteTransaction.mutate,
+ *       wallet: wallets,
+ *       amount: 2000
+ *     })
+ *     if (result.success) {
+ *       console.log('Points added! Transaction:', result.digest)
+ *     } else {
+ *       console.error('Failed:', result.error)
+ *     }
+ *   } catch (error) {
+ *     console.error('Error:', error)
+ *   }
+ * }
+ * ```
+ */
+export const getPointsForGame = async ({ account, suiClient, signAndExecute, wallet, amount = 2000 }) => {
+  return new Promise((resolve, reject) => {
+    if (!account) {
+      const error = 'No account connected. Please connect your wallet first.'
+      console.log(error)
+      reject(new Error(error))
+      return
+    }
+
+    if (!suiClient || !signAndExecute) {
+      const error = 'Sui client or sign function not available'
+      console.error(error)
+      reject(new Error(error))
+      return
+    }
+
+    const tx = new Transaction()
+    tx.setSender(account.address)
+    const packageId = PACKAGE_ID
+
+    tx.moveCall({
+      package: packageId,
+      module: 'pokemongame',
+      function: 'get_points',
+      arguments: [
+        tx.sharedObjectRef({
+          objectId: SHARED_OBJECT_ID,
+          mutable: true,
+          initialSharedVersion: INITIAL_SHARED_VERSION
+        }),
+        tx.pure.u256(amount)
+      ]
+    })
+
+    // Prepare transaction for Enoki wallets (set OCT gas payment if needed)
+    prepareTransactionForEnoki(tx, suiClient, account.address, wallet?.currentWallet || null)
+      .then(() => {
+        console.log('Processing getPoints transaction...')
+
+        signAndExecute(
+          {
+            transaction: tx
+          },
+          {
+            onError: (e) => {
+              console.error('GetPoints Transaction Failed:', e)
+              
+              let errorMessage = 'Transaction failed. Please try again.'
+              
+              // Check if it's an epoch expiration error for Enoki wallets
+              if (isEpochExpirationError(e) && wallet?.currentWallet && isEnokiWallet(wallet.currentWallet)) {
+                errorMessage = getEpochExpirationMessage(e)
+                console.error('Enoki Session Expired:', errorMessage)
+                alert(
+                  '⚠️ Your zkLogin session has expired!\n\n' +
+                  errorMessage + '\n\n' +
+                  'Please disconnect and reconnect your wallet to continue.'
+                )
+              }
+              
+              resolve({ success: false, error: errorMessage })
+            },
+            onSuccess: async ({ digest }) => {
+              try {
+                const result = await suiClient.waitForTransaction({
+                  digest,
+                  options: {
+                    showEffects: true
+                  }
+                })
+                console.log('GetPoints Transaction Result:', result)
+                console.log('Transaction digest:', digest)
+                console.log('✅ GetPoints Transaction Successful!')
+                resolve({ success: true, digest })
+              } catch (error) {
+                console.error('Error waiting for transaction:', error)
+                resolve({ success: false, error: error.message || 'Transaction completed but failed to verify' })
+              }
+            }
+          }
+        )
+      })
+      .catch((error) => {
+        console.error('Error preparing transaction:', error)
+        reject(error)
+      })
+  })
+}
+
+/**
+ * Game-friendly wrapper for redeemPoints that returns a Promise
+ * Use this function in your game components for easier async/await handling
+ * 
+ * @param {Object} params - Transaction parameters
+ * @param {Object} params.account - Current account from useCurrentAccount()
+ * @param {Object} params.suiClient - Sui client from useSuiClient()
+ * @param {Function} params.signAndExecute - Sign and execute function from useSignAndExecuteTransaction()
+ * @param {Object} params.wallet - Wallet object from useWallets()
+ * @param {number} amount - Amount of points to redeem
+ * @returns {Promise<{success: boolean, digest?: string, error?: string}>}
+ * 
+ * Note: When redeeming points, the contract automatically creates UserPowerUps objects:
+ * - 280 points → "Aquifer Petal"
+ * - 320 points → "Ember Flare Charm"
+ * - 360 points → "Lunar Bloom Crest"
+ * - 450 points → "Starlit Core Relic"
+ * - 500 points → "Aegis Prism"
+ * 
+ * @example
+ * ```jsx
+ * const handleRedeemPoints = async () => {
+ *   try {
+ *     const result = await redeemPointsForGame({
+ *       account,
+ *       suiClient,
+ *       signAndExecute: signAndExecuteTransaction.mutate,
+ *       wallet: wallets,
+ *       amount: 280
+ *     })
+ *     if (result.success) {
+ *       console.log('Points redeemed! You received a power-up! Transaction:', result.digest)
+ *     } else {
+ *       console.error('Failed:', result.error)
+ *     }
+ *   } catch (error) {
+ *     console.error('Error:', error)
+ *   }
+ * }
+ * ```
+ */
+export const redeemPointsForGame = async ({ account, suiClient, signAndExecute, wallet, amount }) => {
+  return new Promise((resolve, reject) => {
+    if (!account) {
+      const error = 'No account connected. Please connect your wallet first.'
+      console.log(error)
+      reject(new Error(error))
+      return
+    }
+
+    if (!suiClient || !signAndExecute) {
+      const error = 'Sui client or sign function not available'
+      console.error(error)
+      reject(new Error(error))
+      return
+    }
+
+    if (!amount || amount <= 0) {
+      const error = 'Invalid amount. Amount must be greater than 0.'
+      console.error(error)
+      reject(new Error(error))
+      return
+    }
+
+    const tx = new Transaction()
+    tx.setSender(account.address)
+    const packageId = PACKAGE_ID
+
+    tx.moveCall({
+      package: packageId,
+      module: 'pokemongame',
+      function: 'reedem_points',
+      arguments: [
+        tx.sharedObjectRef({
+          objectId: SHARED_OBJECT_ID,
+          mutable: true,
+          initialSharedVersion: INITIAL_SHARED_VERSION
+        }),
+        tx.pure.u256(amount)
+      ]
+    })
+
+    // Prepare transaction for Enoki wallets (set OCT gas payment if needed)
+    prepareTransactionForEnoki(tx, suiClient, account.address, wallet?.currentWallet || null)
+      .then(() => {
+        console.log('Processing redeemPoints transaction...')
+
+        signAndExecute(
+          {
+            transaction: tx
+          },
+          {
+            onError: (e) => {
+              console.error('RedeemPoints Transaction Failed:', e)
+              
+              let errorMessage = 'Transaction failed. Please try again.'
+              
+              // Check if it's an epoch expiration error for Enoki wallets
+              if (isEpochExpirationError(e) && wallet?.currentWallet && isEnokiWallet(wallet.currentWallet)) {
+                errorMessage = getEpochExpirationMessage(e)
+                console.error('Enoki Session Expired:', errorMessage)
+                alert(
+                  '⚠️ Your zkLogin session has expired!\n\n' +
+                  errorMessage + '\n\n' +
+                  'Please disconnect and reconnect your wallet to continue.'
+                )
+              }
+              
+              resolve({ success: false, error: errorMessage })
+            },
+            onSuccess: async ({ digest }) => {
+              try {
+                const result = await suiClient.waitForTransaction({
+                  digest,
+                  options: {
+                    showEffects: true
+                  }
+                })
+                console.log('RedeemPoints Transaction Result:', result)
+                console.log('Transaction digest:', digest)
+                console.log('✅ RedeemPoints Transaction Successful!')
+                
+                // Check which power-up was received based on amount
+                const powerUps = {
+                  280: 'Aquifer Petal',
+                  320: 'Ember Flare Charm',
+                  360: 'Lunar Bloom Crest',
+                  450: 'Starlit Core Relic',
+                  500: 'Aegis Prism'
+                }
+                const powerUpName = powerUps[amount]
+                if (powerUpName) {
+                  console.log(`🎁 You received: ${powerUpName}!`)
+                }
+                
+                resolve({ success: true, digest, powerUp: powerUpName })
+              } catch (error) {
+                console.error('Error waiting for transaction:', error)
+                resolve({ success: false, error: error.message || 'Transaction completed but failed to verify' })
+              }
+            }
+          }
+        )
+      })
+      .catch((error) => {
+        console.error('Error preparing transaction:', error)
+        reject(error)
+      })
+  })
+}
+
 

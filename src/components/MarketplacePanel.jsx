@@ -106,7 +106,7 @@ export const MarketplacePanel = ({
                   e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.15)'
                 }}
               >
-                {item.image_url && (
+                {(item.image_url || item.gifPath) && (
                   <div
                     style={{
                       width: '100%',
@@ -122,7 +122,7 @@ export const MarketplacePanel = ({
                     }}
                   >
                     <img
-                      src={item.image_url}
+                      src={item.gifPath || item.image_url}
                       alt={item.name || 'NFT art'}
                       style={{
                         width: '100%',
