@@ -30,3 +30,5 @@ index_old.html
 
 # Build artifacts
 pokemongame/build/
+.vercel
+.env*.local
