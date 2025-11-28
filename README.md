@@ -5,7 +5,7 @@
 ![One Poke Battle](https://img.shields.io/badge/One%20Poke%20Battle-Live-brightgreen)
 ![React](https://img.shields.io/badge/React-18.2-blue)
 ![Vite](https://img.shields.io/badge/Vite-5.0-purple)
-![Sui Network](https://img.shields.io/badge/Sui%20Network-Integrated-orange)
+![Onechain](https://img.shields.io/badge/Onechain-Integrated-orange)
 
 **A Pokemon-style 2D game with blockchain integration, NFT marketplace, and on-chain rewards!**
 
@@ -23,7 +23,7 @@ One Poke Battle is a fully-featured Pokemon-style 2D game built with modern web 
 - ⚔️ **Turn-Based Battles** - Fight monsters in strategic combat
 - 🎒 **Inventory System** - Collect items with special battle bonuses
 - 💎 **NFT Marketplace** - Buy and sell items powered by Supabase
-- ⛓️ **Blockchain Integration** - Earn and redeem points on Sui Network
+- ⛓️ **Blockchain Integration** - Earn and redeem points on Onechain
 - 🎨 **Animated GIFs** - Beautiful animated inventory items
 - 🎵 **Audio System** - Immersive sound effects and background music
 
@@ -139,8 +139,8 @@ The `vercel.json` file is already configured with:
 - Animated GIF support for inventory and marketplace items
 
 ### Blockchain Integration
-- **Sui Network Integration** - Full blockchain support via @mysten/dapp-kit
-- **Wallet Connection** - Connect with Sui-compatible wallets
+- **Onechain Network Integration** - Full blockchain support via @mysten/dapp-kit
+- **Wallet Connection** - Connect with Onechain-compatible wallets
 - **Earn Points** - Collect glowing points and win battles to earn Stardust
 - **Redeem Points** - Spend Stardust in the marketplace for powerful items
 - **On-Chain Transactions** - All point operations are recorded on-chain
@@ -156,8 +156,8 @@ The `vercel.json` file is already configured with:
 
 ### Backend & Services
 - **Supabase** - PostgreSQL database for marketplace and player data
-- **Sui Network** - Blockchain for on-chain points and transactions
-- **@mysten/dapp-kit** - Sui wallet integration and transaction handling
+- **Onechain Network** - Blockchain for on-chain points and transactions
+- **@mysten/dapp-kit** - Onechain wallet integration and transaction handling
 
 ### Audio & Assets
 - **Howler.js** - Advanced audio management
@@ -243,7 +243,7 @@ This is a demonstration project. Feel free to use and modify as needed.
 
 <div align="center">
 
-**Made with ❤️ using React, Vite, and Sui Network**
+**Made with ❤️ using React, Vite, and Onechain**
 
 ⭐ Star this repo if you like it!
 
