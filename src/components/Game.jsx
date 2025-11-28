@@ -15,6 +15,7 @@ import { MarketplacePanel } from './MarketplacePanel'
 import { LootToast } from './LootToast'
 import { CharacterDialogue } from './CharacterDialogue'
 import { PointsDisplay } from './PointsDisplay'
+import { InstructionsDialogue } from './InstructionsDialogue'
 import { supabaseClient } from '../lib/supabaseClient.js'
 import { ConnectButton, useCurrentAccount, useSuiClient, useSignAndExecuteTransaction, useWallets } from '@mysten/dapp-kit'
 import { Transaction } from '@mysten/sui/transactions'
@@ -85,6 +86,8 @@ export const Game = () => {
   const canvasRef = useRef(null)
   const animationIdRef = useRef(null)
   const battleAnimationIdRef = useRef(null)
+  const mapAudioIdRef = useRef(null)
+  const battleAudioIdRef = useRef(null)
   const [scale, setScale] = useState(1)
   
   // Blockchain hooks
@@ -149,6 +152,7 @@ export const Game = () => {
   })
   const [isInventoryVisible, setIsInventoryVisible] = useState(true)
   const [audioStarted, setAudioStarted] = useState(false)
+  const [showInstructions, setShowInstructions] = useState(false)
 
   // Responsive scaling so the game fits the screen
   useEffect(() => {
@@ -1170,7 +1174,15 @@ export const Game = () => {
                 setBattleUI({ visible: false, enemyHealth: 100, playerHealth: 100, selectedAttackType: {}, dialogueText: '', isDialogueVisible: false })
                 gsap.to('#overlappingDiv', { opacity: 0 })
                 gs.battle.initiated = false
-                audio.Map.play()
+                
+                // Stop all battle audio completely
+                audio.battle.stop()
+                battleAudioIdRef.current = null
+                
+                // Resume map audio only if it was playing before (audioStarted is true)
+                if (audioStarted && mapAudioIdRef.current === null) {
+                  mapAudioIdRef.current = audio.Map.play()
+                }
                 setIsInventoryVisible(true)
               }
             })
@@ -1201,7 +1213,15 @@ export const Game = () => {
                       setBattleUI({ visible: false, enemyHealth: 100, playerHealth: 100, selectedAttackType: {}, dialogueText: '', isDialogueVisible: false })
                       gsap.to('#overlappingDiv', { opacity: 0 })
                       gs.battle.initiated = false
-                      audio.Map.play()
+                      
+                      // Stop all battle audio completely
+                      audio.battle.stop()
+                      battleAudioIdRef.current = null
+                      
+                      // Resume map audio only if it was playing before (audioStarted is true)
+                      if (audioStarted && mapAudioIdRef.current === null) {
+                        mapAudioIdRef.current = audio.Map.play()
+                      }
                       setIsInventoryVisible(true)
                     }
                   })
@@ -1304,9 +1324,14 @@ export const Game = () => {
         ) {
           window.cancelAnimationFrame(animationIdRef.current)
 
+          // Stop all map audio instances when battle starts
           audio.Map.stop()
+          mapAudioIdRef.current = null
+          
+          // Play battle audio
           audio.initBattle.play()
-          audio.battle.play()
+          // Start battle music (will loop)
+          battleAudioIdRef.current = audio.battle.play()
 
           gs.battle.initiated = true
           gsap.to('#overlappingDiv', {
@@ -1628,9 +1653,18 @@ export const Game = () => {
       }
     }
 
-    const handleClick = () => {
-      if (!audioStarted) {
-        audio.Map.play()
+    const handleClick = (e) => {
+      // Only start audio on initial click, not on UI button clicks
+      // Check if click is on a button or interactive element
+      const isUIElement = e.target.tagName === 'BUTTON' || 
+                         e.target.closest('button') !== null ||
+                         e.target.closest('[role="button"]') !== null
+      
+      // Only start audio if not started, not in battle, and not clicking UI
+      if (!audioStarted && !gameStateRef.current.battle.initiated && !isUIElement) {
+        // Stop any existing map audio before playing
+        audio.Map.stop()
+        mapAudioIdRef.current = audio.Map.play()
         setAudioStarted(true)
       }
     }
@@ -1644,7 +1678,7 @@ export const Game = () => {
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('click', handleClick)
     }
-  }, [marketplaceState.isOpen, audioStarted])
+  }, [marketplaceState.isOpen])
 
   return (
     <div
@@ -1696,6 +1730,47 @@ export const Game = () => {
       >
       <ConnectButton />
       </div>
+
+      {/* Help Icon */}
+      {!battleUI.visible && (
+        <button
+          onClick={() => setShowInstructions(true)}
+          style={{
+            position: 'absolute',
+            top: '16px',
+            right: '16px',
+            zIndex: 20,
+            width: '36px',
+            height: '36px',
+            backgroundColor: 'white',
+            border: '3px solid #000',
+            borderRadius: '50%',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '20px',
+            fontFamily: 'Press Start 2P, cursive',
+            color: '#000',
+            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+            transition: 'all 0.1s',
+          }}
+        onMouseEnter={(e) => {
+          e.target.style.backgroundColor = '#000'
+          e.target.style.color = '#fff'
+          e.target.style.transform = 'scale(1.1)'
+        }}
+        onMouseLeave={(e) => {
+          e.target.style.backgroundColor = '#fff'
+          e.target.style.color = '#000'
+          e.target.style.transform = 'scale(1)'
+        }}
+          aria-label="Show help"
+          title="How to Play"
+        >
+          ?
+        </button>
+      )}
 
       <MarketplacePanel
         isOpen={marketplaceState.isOpen}
@@ -1864,6 +1939,11 @@ export const Game = () => {
         onAttackClick={handleBattleAttack}
         onAttackHover={(attack) => setBattleUI((prev) => ({ ...prev, selectedAttackType: attack }))}
         onDialogueClick={handleDialogueClick}
+      />
+
+      <InstructionsDialogue
+        isVisible={showInstructions}
+        onClose={() => setShowInstructions(false)}
       />
 
       {/* Claim Points Popup */}
